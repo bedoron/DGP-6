@@ -8,7 +8,7 @@
 //== INCLUDES =================================================================
 #include "SubdivisionViewer.h"
 #include <windows.h>
-
+#include <algorithm>
 //== IMPLEMENTATION ========================================================== 
 
 static bool _SubdivisioneterizationComputed_u = false, _SubdivisioneterizationComputed_h = false;
@@ -66,6 +66,7 @@ void SubdivisionViewer::Perform_CatmullClark()
 	might get mixed up when running over all faces\halfedges\vertices
 	**********************************************************/
 	//1. Find face centroids and fill them in fcentroid_
+	cout << "Finding face centroids and filling the in fcentroid_\n";
 	for(Mesh::FaceIter fiter = mesh_.faces_begin(); fiter != mesh_.faces_end(); ++fiter) {
 		Mesh::Point p(0,0,0);
 		
@@ -78,53 +79,138 @@ void SubdivisionViewer::Perform_CatmullClark()
 
 		mesh_.property(fcentroid_, fiter) = p;
 	}
+
 	//2. Find edge newpoints and fill them in enewpoint_
+	cout << "Finding edge newpoints and filling them in enewpoint_\n";
 	for(Mesh::EdgeIter eiter = mesh_.edges_begin(); eiter != mesh_.edges_end(); ++eiter) {
+
 		Mesh::HalfedgeHandle heh0 = mesh_.halfedge_handle(eiter, 0);
-		Mesh::HalfedgeHandle heh1 = mesh_.halfedge_handle(eiter, 0);
+		Mesh::HalfedgeHandle heh1 = mesh_.halfedge_handle(eiter, 1);
+
+		if(!mesh_.is_boundary(heh0)) {
+
+		}
+
+		if(!mesh_.is_boundary(heh1)) {
+
+		}
 
 		Mesh::FaceHandle fh0 = mesh_.face_handle(heh0);
 		Mesh::FaceHandle fh1 = mesh_.face_handle(heh1);
 
+		Mesh::Point p0 = mesh_.point(mesh_.from_vertex_handle(heh0));
+		Mesh::Point p1 = mesh_.point(mesh_.to_vertex_handle(heh0));		
+
 		Mesh::Point fp0 = mesh_.property(fcentroid_, fh0);
 		Mesh::Point fp1 = mesh_.property(fcentroid_, fh1);
-
-		Mesh::Point p0 = mesh_.point(mesh_.from_vertex_handle(heh0));
-		Mesh::Point p1 = mesh_.point(mesh_.to_vertex_handle(heh0));
 
 		Mesh::Point ep = (p0+p1+fp0+fp1)/4.0;
 
 		mesh_.property(enewpoint_, eiter) = ep;
 	}
+
+	// Calcualte to where old points need to move and store them in oldP
+	cout << "Calcualte to where old points need to move and store them in oldP\n";
+	std::map<Mesh::VertexHandle, Mesh::Point> oldP;
+	for(Mesh::VertexIter vi = mesh_.vertices_begin(); vi != mesh_.vertices_end(); ++vi) {
+		// Calculate the average face centers around VI
+		Mesh::Point P = mesh_.point(vi);
+		Mesh::Point F(0,0,0);
+		int incidents = 0;
+		for(Mesh::VFIter vfIt = mesh_.vf_iter(vi); vfIt; ++vfIt) {
+			++incidents;
+			F += mesh_.property(fcentroid_, vfIt);
+		}
+		F /= incidents;
+
+		// Calculate the average center point 
+		Mesh::Point R(0,0,0);
+		int n = 0;
+		for(Mesh::VOHIter vohit = mesh_.voh_iter(vi); vohit; ++vohit) {
+			Mesh::VertexHandle to =  mesh_.to_vertex_handle(vohit);
+			Mesh::Point avg = (mesh_.point(vi) - mesh_.point(to))/2.0;
+			++n;
+		}
+		R /= n;
+
+		Mesh::Point originalMove(0,0,0);
+		originalMove = (F + R*2 + P*(n-3))/n;
+		oldP[vi.handle()] = originalMove;
+	}
+	// Now move old points
+	cout << "Moving old points\n";
+	for(std::map<Mesh::VertexHandle, Mesh::Point>::iterator oldPit = oldP.begin(); oldPit != oldP.end(); ++oldPit) {
+		mesh_.point(oldPit->first) = oldPit->second;
+	}
+
 	//3. Allocate new edge vertices in enewvertex_
+	cout << "Allocating new vertices in enewvertex_\n";
 	for(Mesh::EdgeIter eiter = mesh_.edges_begin(); eiter != mesh_.edges_end(); ++eiter) {
 		Mesh::Point ep = mesh_.property(enewpoint_, eiter);
 		Mesh::VertexHandle vp = mesh_.add_vertex(ep);
 		mesh_.property(enewvertex_, eiter) = vp;
 	}
 	
-	if(qmesh != 0)
-		delete qmesh;
-	qmesh = new Mesh(mesh_);
-	for(Mesh::FaceIter fiter = mesh_.faces_begin(); fiter != mesh_.faces_end(); ++fiter) {
-		qmesh->delete_face(fiter, false);
-	}
-	// qmesh now contains only vertices, connect them by the rules:
+	// Build new faces
+	cout << "Building new faces and storing them inside a map\n";
+	std::vector< std::vector<Mesh::VertexHandle> > faces;
 	for(Mesh::FaceIter fiter = mesh_.faces_begin(); fiter != mesh_.faces_end(); ++fiter) {
 		Mesh::Point faceCentroid = mesh_.property(fcentroid_, fiter);
-		Mesh::FaceEdgeIter feiter = mesh_.fe_iter(fiter);
-		std::vector<Mesh::VertexHandle> edgeCenters;
-		for(;feiter; ++feiter) {
-			edgeCenters.push_back(mesh_.property(enewvertex_, feiter));
+		Mesh::VertexHandle centroidvh = mesh_.add_vertex(faceCentroid);	
+
+
+		std::map< Mesh::VertexHandle, std::vector<Mesh::VertexHandle> > new_faces;
+		for(Mesh::FaceHalfedgeIter fheiter = mesh_.fh_iter(fiter); fheiter; ++fheiter) {
+			Mesh::VertexHandle enewvh = mesh_.property(enewvertex_, mesh_.edge_handle(fheiter));
+
+			Mesh::VertexHandle key0 = mesh_.from_vertex_handle(fheiter);
+			Mesh::VertexHandle key1 = mesh_.to_vertex_handle(fheiter);
+
+			bool push_centroid = false;
+			if(std::find(new_faces[key0].begin(),new_faces[key0].end(),key0)==new_faces[key0].end()) {
+				new_faces[key0].push_back(key0);
+				push_centroid = true;
+			}
+
+			new_faces[key0].push_back(enewvh);
+			if(push_centroid)
+				new_faces[key0].push_back(centroidvh);
+
+			/// -------------
+			bool push_vertex = false;
+			if(std::find(new_faces[key1].begin(),new_faces[key1].end(),centroidvh)==new_faces[key1].end()) {
+				new_faces[key1].push_back(centroidvh);
+				push_vertex = true;
+			}
+			new_faces[key1].push_back(enewvh);
+
+			if(push_vertex)
+				new_faces[key1].push_back(key1);
+
 		}
-	}	
-	
 
+		std::map< Mesh::VertexHandle, std::vector<Mesh::VertexHandle> >::iterator nfIter = new_faces.begin();
+		for(;nfIter!=new_faces.end(); ++nfIter) {
+			faces.push_back(nfIter->second);
+		}
+	}
 	//4. Delete the old faces, and enter the new faces
+	cout << "killing old faces *muhahaha* \n";
+	for(Mesh::FaceIter fiter = mesh_.faces_begin(); fiter != mesh_.faces_end(); ++fiter) {
+		mesh_.delete_face(fiter,false);
+	}
 
-	mesh_.remove_property(fcentroid_);
+	mesh_.garbage_collection();
+
+
+	for(int i = 0 ; i < faces.size(); ++i) {
+		mesh_.add_face(faces[i]);
+	}
+
 	mesh_.remove_property(enewpoint_);
 	mesh_.remove_property(enewvertex_);
+
+	//mesh_ = (*qmesh);
 
 	mesh_.update_normals();
 
