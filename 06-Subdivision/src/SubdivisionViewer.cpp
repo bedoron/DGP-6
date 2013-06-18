@@ -46,9 +46,6 @@ void
 typedef OpenMesh::PolyMesh_ArrayKernelT<> Mesh;
 typedef OpenMesh::TriMesh_ArrayKernelT<>  TriMesh;
 
-static Mesh *qmesh = 0;
-static TriMesh *tmesh = 0;
-
 void SubdivisionViewer::Perform_CatmullClark()
 {
 	mesh_.add_property(fcentroid_);
@@ -87,12 +84,12 @@ void SubdivisionViewer::Perform_CatmullClark()
 		Mesh::HalfedgeHandle heh0 = mesh_.halfedge_handle(eiter, 0);
 		Mesh::HalfedgeHandle heh1 = mesh_.halfedge_handle(eiter, 1);
 
-		if(!mesh_.is_boundary(heh0)) {
-
+		if(mesh_.is_boundary(heh0)) {
+			continue;
 		}
 
-		if(!mesh_.is_boundary(heh1)) {
-
+		if(mesh_.is_boundary(heh1)) {
+			continue;
 		}
 
 		Mesh::FaceHandle fh0 = mesh_.face_handle(heh0);
@@ -114,6 +111,7 @@ void SubdivisionViewer::Perform_CatmullClark()
 	std::map<Mesh::VertexHandle, Mesh::Point> oldP;
 	for(Mesh::VertexIter vi = mesh_.vertices_begin(); vi != mesh_.vertices_end(); ++vi) {
 		// Calculate the average face centers around VI
+		Mesh::VertexHandle vh = vi;
 		Mesh::Point P = mesh_.point(vi);
 		Mesh::Point F(0,0,0);
 		int incidents = 0;
@@ -121,7 +119,7 @@ void SubdivisionViewer::Perform_CatmullClark()
 			++incidents;
 			F += mesh_.property(fcentroid_, vfIt);
 		}
-		F /= incidents;
+		F /= ((float)incidents);
 
 		// Calculate the average center point 
 		Mesh::Point R(0,0,0);
@@ -129,13 +127,14 @@ void SubdivisionViewer::Perform_CatmullClark()
 		for(Mesh::VOHIter vohit = mesh_.voh_iter(vi); vohit; ++vohit) {
 			Mesh::VertexHandle to =  mesh_.to_vertex_handle(vohit);
 			Mesh::Point avg = (P + mesh_.point(to))/2.0;
+			R += avg;
 			++n;
 		}
-		R /= n;
+		R /= ((float)n);
 
 		Mesh::Point originalMove(0,0,0);
-		originalMove = (F + R*2 + P*(n-3))/n;
-		oldP[vi.handle()] = originalMove;
+		originalMove = (F + R*2 + P*(n-3))/((float)n);
+		oldP[vh] = originalMove;
 	}
 	// Now move old points
 	 cout << "Moving old points\n";
@@ -158,6 +157,7 @@ void SubdivisionViewer::Perform_CatmullClark()
 		Mesh::Point faceCentroid = mesh_.property(fcentroid_, fiter);
 		Mesh::VertexHandle centroidvh = mesh_.add_vertex(faceCentroid);	
 
+		Mesh::FaceHandle fh = fiter.handle();
 
 		std::map< Mesh::VertexHandle, std::vector<Mesh::VertexHandle> > new_faces;
 		for(Mesh::FaceHalfedgeIter fheiter = mesh_.fh_iter(fiter); fheiter; ++fheiter) {
