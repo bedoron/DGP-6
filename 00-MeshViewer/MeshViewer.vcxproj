@@ -89,6 +89,8 @@
     </Link>
     <Lib>
       <OutputFile>..\lib\MeshViewerD.lib</OutputFile>
+      <AdditionalDependencies>$(SolutionDir)lib\glut32.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>..\lib</AdditionalLibraryDirectories>
     </Lib>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">

@@ -1,13 +1,15 @@
 *.sdf
 
 Release/
-!Release/glut*
+!Release/glut32.dll
 
 Debug/
-!Debug/glut*
+!Debug/glut32.dll
 
 lib/*
 !lib/OpenGL32.lib
 !lib/glut32.lib
+!lib/glut32.dll
+
 
 

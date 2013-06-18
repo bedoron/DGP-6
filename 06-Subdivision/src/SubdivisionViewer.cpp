@@ -246,20 +246,30 @@ void SubdivisionViewer::Perform_Loop()
 		Mesh::HalfedgeHandle topHeh = mesh_.next_halfedge_handle(heh1);
 		Mesh::HalfedgeHandle bottomHeh = mesh_.next_halfedge_handle(heh0);
 
-		Mesh::Point top = mesh_.point(mesh_.to_vertex_handle(topHeh));
-		Mesh::Point bottom = mesh_.point(mesh_.to_vertex_handle(bottomHeh));
+		// TODO: This might not be an optimal method
+		float factor = 1;
+
+		Mesh::Point top(0,0,0);
+		if(!mesh_.is_boundary(topHeh)) {
+			top = mesh_.point(mesh_.to_vertex_handle(topHeh));
+		} else {
+			++factor; // TODO: check factor 0
+		}
+
+		Mesh::Point bottom(0,0,0); 
+		if(!mesh_.is_boundary(topHeh)) {
+			bottom = mesh_.point(mesh_.to_vertex_handle(bottomHeh));
+		} else {
+			++factor; // TODO: check factor 0
+		}
 
 		Mesh::Point edgePoint(0,0,0);
 
-		edgePoint = (p0 + p1)*0.375 + (top + bottom)*0.125;
+		edgePoint = (p0 + p1)*0.375 + (top + bottom)*0.125*factor;
 		mesh_.property(enewpoint_, eiter) = edgePoint;
 	}
 	//2. Allocate new edge vertices in enewvertex_
-	for(Mesh::EdgeIter eiter = mesh_.edges_begin(); eiter != mesh_.edges_end(); ++eiter) {
-		Mesh::Point pt = mesh_.property(enewpoint_, eiter);
-		Mesh::VertexHandle vh = mesh_.add_vertex(pt);
-		mesh_.property(enewvertex_, eiter) = vh;
-	}
+
 	//3. Delete the old faces, and enter the new faces
 	std::map<Mesh::VertexHandle, Mesh::Point> originals;
 	for(Mesh::VertexIter vh = mesh_.vertices_begin(); vh != mesh_.vertices_end(); ++vh) {
@@ -274,17 +284,32 @@ void SubdivisionViewer::Perform_Loop()
 		float square = ((3.0/8.0)+0.25*cos(2.8*M_PI/(float)valence));
 		float beta = (1.0/(float)valence)*((5.0/8.0)-(square*square));
 
-		originals[vh.handle()] = P*(1-((float)valence)*beta) + neighbors*beta;
-//		originals[vh.handle()] = Mesh::Point(0,0,0);//P*(1-((float)valence)*beta) + neighbors*beta;
+		Mesh::Point newPos = P*(1-((float)valence)*beta) + neighbors*beta;
+		originals[vh.handle()]  = newPos;
 	}
-	// Move Existing vertices
+
+
+	// Move Existing vertices - this part messes everything up
 	for(std::map<Mesh::VertexHandle, Mesh::Point>::iterator oit = originals.begin(); oit != originals.end(); ++oit) {
-		mesh_.set_point(oit->first, oit->second);
+		Mesh::VertexHandle toMove = oit->first;
+		Mesh::Point location = oit->second;
+		mesh_.set_point(toMove, location);
 	}
+
+
+	for(Mesh::EdgeIter eiter = mesh_.edges_begin(); eiter != mesh_.edges_end(); ++eiter) {
+		Mesh::Point pt = mesh_.property(enewpoint_, eiter);
+		Mesh::VertexHandle vh = mesh_.add_vertex(pt);
+		mesh_.property(enewvertex_, eiter) = vh;
+	}
+
+
 	// Build faces
 	std::vector< std::vector<Mesh::VertexHandle> > faces;
 	for(Mesh::FaceIter fit = mesh_.faces_begin(); fit != mesh_.faces_end(); ++fit) {
-
+		
+		
+		std::vector< Mesh::VertexHandle > mid_face; // This is the stuck in the middle face
 		for(Mesh::FaceHalfedgeIter fheit = mesh_.fh_iter(fit); fheit; ++fheit ) {
 
 			Mesh::HalfedgeHandle prev, tentative;
@@ -308,7 +333,19 @@ void SubdivisionViewer::Perform_Loop()
 			face.push_back(prevCenter);
 
 			faces.push_back(face);
+
+			mid_face.push_back(currCenter);
 		}
+
+		if(mid_face.size()>3) {
+			std::vector< Mesh::VertexHandle > triangle(mid_face);
+			mid_face[2] = mid_face[3];
+			mid_face.pop_back();
+			triangle[0] = triangle[3];
+			triangle.pop_back();
+			faces.push_back(triangle);
+		} 
+		faces.push_back(mid_face);
 	}
 
 	//4. Delete the old faces, and enter the new faces
@@ -318,7 +355,6 @@ void SubdivisionViewer::Perform_Loop()
 	}
 
 	mesh_.garbage_collection();
-
 
 	for(int i = 0 ; i < faces.size(); ++i) {
 		mesh_.add_face(faces[i]);
@@ -330,6 +366,8 @@ void SubdivisionViewer::Perform_Loop()
 	mesh_.update_normals();
 
 	update_face_indices();
+
+	
 
 	std::cerr << mesh_.n_vertices() << " vertices, "
 		<< mesh_.n_faces()    << " faces\n";
