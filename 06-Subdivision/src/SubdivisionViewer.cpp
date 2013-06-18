@@ -84,24 +84,28 @@ void SubdivisionViewer::Perform_CatmullClark()
 		Mesh::HalfedgeHandle heh0 = mesh_.halfedge_handle(eiter, 0);
 		Mesh::HalfedgeHandle heh1 = mesh_.halfedge_handle(eiter, 1);
 
-		if(mesh_.is_boundary(heh0)) {
-			continue;
-		}
-
-		if(mesh_.is_boundary(heh1)) {
-			continue;
-		}
-
 		Mesh::FaceHandle fh0 = mesh_.face_handle(heh0);
 		Mesh::FaceHandle fh1 = mesh_.face_handle(heh1);
 
 		Mesh::Point p0 = mesh_.point(mesh_.from_vertex_handle(heh0));
 		Mesh::Point p1 = mesh_.point(mesh_.to_vertex_handle(heh0));		
 
-		Mesh::Point fp0 = mesh_.property(fcentroid_, fh0);
-		Mesh::Point fp1 = mesh_.property(fcentroid_, fh1);
+		Mesh::Point fp0(0,0,0);
+		Mesh::Point fp1(0,0,0);
 
-		Mesh::Point ep = (p0+p1+fp0+fp1)/4.0;
+		float divider = 2;
+
+		if(!mesh_.is_boundary(heh0)) {
+			fp0 = mesh_.property(fcentroid_, fh0);
+			++divider;
+		}
+
+		if(!mesh_.is_boundary(heh1)) {
+			fp1 = mesh_.property(fcentroid_, fh1);
+			++divider;
+		}
+
+		Mesh::Point ep = (p0+p1+fp0+fp1)/divider;
 
 		mesh_.property(enewpoint_, eiter) = ep;
 	}
