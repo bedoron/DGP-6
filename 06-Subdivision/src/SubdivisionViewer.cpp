@@ -235,6 +235,94 @@ void SubdivisionViewer::Perform_Loop()
 	2. Allocate new edge vertices in enewvertex_
 	3. Delete the old faces, and enter the new faces
 	**********************************************/
+	//1. Find New Edge midpoints, and enter them in enewpoint_
+	for(Mesh::EdgeIter eiter = mesh_.edges_begin(); eiter != mesh_.edges_end(); ++eiter) {
+		Mesh::HalfedgeHandle heh0 = mesh_.halfedge_handle(eiter, 0);
+		Mesh::HalfedgeHandle heh1 = mesh_.halfedge_handle(eiter, 1);
+
+		Mesh::Point p0 = mesh_.point(mesh_.from_vertex_handle(heh0));
+		Mesh::Point p1 = mesh_.point(mesh_.to_vertex_handle(heh0));
+
+		Mesh::HalfedgeHandle topHeh = mesh_.next_halfedge_handle(heh1);
+		Mesh::HalfedgeHandle bottomHeh = mesh_.next_halfedge_handle(heh0);
+
+		Mesh::Point top = mesh_.point(mesh_.to_vertex_handle(topHeh));
+		Mesh::Point bottom = mesh_.point(mesh_.to_vertex_handle(bottomHeh));
+
+		Mesh::Point edgePoint(0,0,0);
+
+		edgePoint = (p0 + p1)*0.375 + (top + bottom)*0.125;
+		mesh_.property(enewpoint_, eiter) = edgePoint;
+	}
+	//2. Allocate new edge vertices in enewvertex_
+	for(Mesh::EdgeIter eiter = mesh_.edges_begin(); eiter != mesh_.edges_end(); ++eiter) {
+		Mesh::Point pt = mesh_.property(enewpoint_, eiter);
+		Mesh::VertexHandle vh = mesh_.add_vertex(pt);
+		mesh_.property(enewvertex_, eiter) = vh;
+	}
+	//3. Delete the old faces, and enter the new faces
+	std::map<Mesh::VertexHandle, Mesh::Point> originals;
+	for(Mesh::VertexIter vh = mesh_.vertices_begin(); vh != mesh_.vertices_end(); ++vh) {
+		Mesh::Point P = mesh_.point(vh);
+		int valence = 0;
+		Mesh::Point neighbors(0,0,0);
+		for(Mesh::VVIter vvit = mesh_.vv_iter(vh); vvit ; ++vvit) {
+			++valence;
+			neighbors += mesh_.point(vvit);
+		}
+		// Build Beta
+		float square = ((3.0/8.0)+0.25*cos(2.8*M_PI/(float)valence));
+		float beta = (1.0/(float)valence)*((5.0/8.0)-(square*square));
+
+		originals[vh.handle()] = P*(1-((float)valence)*beta) + neighbors*beta;
+//		originals[vh.handle()] = Mesh::Point(0,0,0);//P*(1-((float)valence)*beta) + neighbors*beta;
+	}
+	// Move Existing vertices
+	for(std::map<Mesh::VertexHandle, Mesh::Point>::iterator oit = originals.begin(); oit != originals.end(); ++oit) {
+		mesh_.set_point(oit->first, oit->second);
+	}
+	// Build faces
+	std::vector< std::vector<Mesh::VertexHandle> > faces;
+	for(Mesh::FaceIter fit = mesh_.faces_begin(); fit != mesh_.faces_end(); ++fit) {
+
+		for(Mesh::FaceHalfedgeIter fheit = mesh_.fh_iter(fit); fheit; ++fheit ) {
+
+			Mesh::HalfedgeHandle prev, tentative;
+			prev = mesh_.next_halfedge_handle(mesh_.next_halfedge_handle(fheit));
+			tentative = mesh_.next_halfedge_handle(prev);
+
+			prev = (tentative == fheit.handle())?prev:tentative;
+
+			Mesh::EdgeHandle currentEdge = mesh_.edge_handle(fheit);			
+			Mesh::EdgeHandle prevEdge = mesh_.edge_handle(prev);
+
+			Mesh::VertexHandle v0, currCenter, prevCenter;
+
+			v0 = mesh_.from_vertex_handle(fheit);
+			currCenter = mesh_.property(enewvertex_, currentEdge);
+			prevCenter = mesh_.property(enewvertex_, prevEdge);
+
+			std::vector< Mesh::VertexHandle > face;
+			face.push_back(v0);
+			face.push_back(currCenter);
+			face.push_back(prevCenter);
+
+			faces.push_back(face);
+		}
+	}
+
+	//4. Delete the old faces, and enter the new faces
+	cout << "killing old faces *muhahaha* \n";
+	for(Mesh::FaceIter fiter = mesh_.faces_begin(); fiter != mesh_.faces_end(); ++fiter) {
+		mesh_.delete_face(fiter,false);
+	}
+
+	mesh_.garbage_collection();
+
+
+	for(int i = 0 ; i < faces.size(); ++i) {
+		mesh_.add_face(faces[i]);
+	}
 
 	mesh_.remove_property(enewpoint_);
 	mesh_.remove_property(enewvertex_);
