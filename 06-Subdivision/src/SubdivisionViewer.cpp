@@ -128,7 +128,7 @@ void SubdivisionViewer::Perform_CatmullClark()
 		int n = 0;
 		for(Mesh::VOHIter vohit = mesh_.voh_iter(vi); vohit; ++vohit) {
 			Mesh::VertexHandle to =  mesh_.to_vertex_handle(vohit);
-			Mesh::Point avg = (mesh_.point(vi) - mesh_.point(to))/2.0;
+			Mesh::Point avg = (P + mesh_.point(to))/2.0;
 			++n;
 		}
 		R /= n;
@@ -138,9 +138,9 @@ void SubdivisionViewer::Perform_CatmullClark()
 		oldP[vi.handle()] = originalMove;
 	}
 	// Now move old points
-	cout << "Moving old points\n";
+	 cout << "Moving old points\n";
 	for(std::map<Mesh::VertexHandle, Mesh::Point>::iterator oldPit = oldP.begin(); oldPit != oldP.end(); ++oldPit) {
-		mesh_.point(oldPit->first) = oldPit->second;
+		mesh_.set_point(oldPit->first, oldPit->second);
 	}
 
 	//3. Allocate new edge vertices in enewvertex_
