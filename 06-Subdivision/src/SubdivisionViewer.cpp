@@ -43,6 +43,11 @@ void
 }
 
 //-----------------------------------------------------------------------------
+typedef OpenMesh::PolyMesh_ArrayKernelT<> Mesh;
+typedef OpenMesh::TriMesh_ArrayKernelT<>  TriMesh;
+
+static Mesh *qmesh = 0;
+static TriMesh *tmesh = 0;
 
 void SubdivisionViewer::Perform_CatmullClark()
 {
@@ -60,6 +65,62 @@ void SubdivisionViewer::Perform_CatmullClark()
 	NOTICE: make sure to call mesh_.garbage_collection after deleting new faces, or you
 	might get mixed up when running over all faces\halfedges\vertices
 	**********************************************************/
+	//1. Find face centroids and fill them in fcentroid_
+	for(Mesh::FaceIter fiter = mesh_.faces_begin(); fiter != mesh_.faces_end(); ++fiter) {
+		Mesh::Point p(0,0,0);
+		
+		int total_points = 0;
+		for(Mesh::FVIter fviter = mesh_.fv_iter(fiter); fviter; ++fviter) {
+			++total_points;
+			p += mesh_.point(fviter);
+		}
+		p /= total_points;
+
+		mesh_.property(fcentroid_, fiter) = p;
+	}
+	//2. Find edge newpoints and fill them in enewpoint_
+	for(Mesh::EdgeIter eiter = mesh_.edges_begin(); eiter != mesh_.edges_end(); ++eiter) {
+		Mesh::HalfedgeHandle heh0 = mesh_.halfedge_handle(eiter, 0);
+		Mesh::HalfedgeHandle heh1 = mesh_.halfedge_handle(eiter, 0);
+
+		Mesh::FaceHandle fh0 = mesh_.face_handle(heh0);
+		Mesh::FaceHandle fh1 = mesh_.face_handle(heh1);
+
+		Mesh::Point fp0 = mesh_.property(fcentroid_, fh0);
+		Mesh::Point fp1 = mesh_.property(fcentroid_, fh1);
+
+		Mesh::Point p0 = mesh_.point(mesh_.from_vertex_handle(heh0));
+		Mesh::Point p1 = mesh_.point(mesh_.to_vertex_handle(heh0));
+
+		Mesh::Point ep = (p0+p1+fp0+fp1)/4.0;
+
+		mesh_.property(enewpoint_, eiter) = ep;
+	}
+	//3. Allocate new edge vertices in enewvertex_
+	for(Mesh::EdgeIter eiter = mesh_.edges_begin(); eiter != mesh_.edges_end(); ++eiter) {
+		Mesh::Point ep = mesh_.property(enewpoint_, eiter);
+		Mesh::VertexHandle vp = mesh_.add_vertex(ep);
+		mesh_.property(enewvertex_, eiter) = vp;
+	}
+	
+	if(qmesh != 0)
+		delete qmesh;
+	qmesh = new Mesh(mesh_);
+	for(Mesh::FaceIter fiter = mesh_.faces_begin(); fiter != mesh_.faces_end(); ++fiter) {
+		qmesh->delete_face(fiter, false);
+	}
+	// qmesh now contains only vertices, connect them by the rules:
+	for(Mesh::FaceIter fiter = mesh_.faces_begin(); fiter != mesh_.faces_end(); ++fiter) {
+		Mesh::Point faceCentroid = mesh_.property(fcentroid_, fiter);
+		Mesh::FaceEdgeIter feiter = mesh_.fe_iter(fiter);
+		std::vector<Mesh::VertexHandle> edgeCenters;
+		for(;feiter; ++feiter) {
+			edgeCenters.push_back(mesh_.property(enewvertex_, feiter));
+		}
+	}	
+	
+
+	//4. Delete the old faces, and enter the new faces
 
 	mesh_.remove_property(fcentroid_);
 	mesh_.remove_property(enewpoint_);
