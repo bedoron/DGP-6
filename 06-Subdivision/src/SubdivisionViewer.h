@@ -55,6 +55,10 @@ private:
 
   Mesh::Point _bbMin3D, _bbMax3D;//, _bbMin2D, _bbMax2D;
 
+  bool Chaikin(Mesh::EdgeIter& eh,Mesh::Point& edgePoint);
+  bool Chaikin(Mesh::VertexIter& vh, Mesh::Point& newPos);
+  bool Chaikin(Mesh::EdgeHandle& eh,Mesh::Point& edgePoint);
+  bool Chaikin(Mesh::VertexHandle& vh, Mesh::Point& newPos);
 };
 
 

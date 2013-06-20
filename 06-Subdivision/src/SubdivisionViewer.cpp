@@ -80,33 +80,34 @@ void SubdivisionViewer::Perform_CatmullClark()
 	//2. Find edge newpoints and fill them in enewpoint_
 	cout << "Finding edge newpoints and filling them in enewpoint_\n";
 	for(Mesh::EdgeIter eiter = mesh_.edges_begin(); eiter != mesh_.edges_end(); ++eiter) {
+		Mesh::Point ep;
+		if(!Chaikin(eiter, ep)) {
+			Mesh::HalfedgeHandle heh0 = mesh_.halfedge_handle(eiter, 0);
+			Mesh::HalfedgeHandle heh1 = mesh_.halfedge_handle(eiter, 1);
 
-		Mesh::HalfedgeHandle heh0 = mesh_.halfedge_handle(eiter, 0);
-		Mesh::HalfedgeHandle heh1 = mesh_.halfedge_handle(eiter, 1);
+			Mesh::FaceHandle fh0 = mesh_.face_handle(heh0);
+			Mesh::FaceHandle fh1 = mesh_.face_handle(heh1);
 
-		Mesh::FaceHandle fh0 = mesh_.face_handle(heh0);
-		Mesh::FaceHandle fh1 = mesh_.face_handle(heh1);
+			Mesh::Point p0 = mesh_.point(mesh_.from_vertex_handle(heh0));
+			Mesh::Point p1 = mesh_.point(mesh_.to_vertex_handle(heh0));		
 
-		Mesh::Point p0 = mesh_.point(mesh_.from_vertex_handle(heh0));
-		Mesh::Point p1 = mesh_.point(mesh_.to_vertex_handle(heh0));		
+			Mesh::Point fp0(0,0,0);
+			Mesh::Point fp1(0,0,0);
 
-		Mesh::Point fp0(0,0,0);
-		Mesh::Point fp1(0,0,0);
+			float divider = 2;
 
-		float divider = 2;
+			if(!mesh_.is_boundary(heh0)) {
+				fp0 = mesh_.property(fcentroid_, fh0);
+				++divider;
+			}
 
-		if(!mesh_.is_boundary(heh0)) {
-			fp0 = mesh_.property(fcentroid_, fh0);
-			++divider;
+			if(!mesh_.is_boundary(heh1)) {
+				fp1 = mesh_.property(fcentroid_, fh1);
+				++divider;
+			}
+
+			ep = (p0+p1+fp0+fp1)/divider;
 		}
-
-		if(!mesh_.is_boundary(heh1)) {
-			fp1 = mesh_.property(fcentroid_, fh1);
-			++divider;
-		}
-
-		Mesh::Point ep = (p0+p1+fp0+fp1)/divider;
-
 		mesh_.property(enewpoint_, eiter) = ep;
 	}
 
@@ -115,30 +116,33 @@ void SubdivisionViewer::Perform_CatmullClark()
 	std::map<Mesh::VertexHandle, Mesh::Point> oldP;
 	for(Mesh::VertexIter vi = mesh_.vertices_begin(); vi != mesh_.vertices_end(); ++vi) {
 		// Calculate the average face centers around VI
-		Mesh::VertexHandle vh = vi;
-		Mesh::Point P = mesh_.point(vi);
-		Mesh::Point F(0,0,0);
-		int incidents = 0;
-		for(Mesh::VFIter vfIt = mesh_.vf_iter(vi); vfIt; ++vfIt) {
-			++incidents;
-			F += mesh_.property(fcentroid_, vfIt);
-		}
-		F /= ((float)incidents);
-
-		// Calculate the average center point 
-		Mesh::Point R(0,0,0);
-		int n = 0;
-		for(Mesh::VOHIter vohit = mesh_.voh_iter(vi); vohit; ++vohit) {
-			Mesh::VertexHandle to =  mesh_.to_vertex_handle(vohit);
-			Mesh::Point avg = (P + mesh_.point(to))/2.0;
-			R += avg;
-			++n;
-		}
-		R /= ((float)n);
-
 		Mesh::Point originalMove(0,0,0);
-		originalMove = (F + R*2 + P*(n-3))/((float)n);
-		oldP[vh] = originalMove;
+
+		if(!Chaikin(vi, originalMove)) {
+			Mesh::Point P = mesh_.point(vi);
+			Mesh::Point F(0,0,0);
+			int incidents = 0;
+			for(Mesh::VFIter vfIt = mesh_.vf_iter(vi); vfIt; ++vfIt) {
+				++incidents;
+				F += mesh_.property(fcentroid_, vfIt);
+			}
+			F /= ((float)incidents);
+
+			// Calculate the average center point 
+			Mesh::Point R(0,0,0);
+			int n = 0;
+			for(Mesh::VOHIter vohit = mesh_.voh_iter(vi); vohit; ++vohit) {
+				Mesh::VertexHandle to =  mesh_.to_vertex_handle(vohit);
+				Mesh::Point avg = (P + mesh_.point(to))/2.0;
+				R += avg;
+				++n;
+			}
+			R /= ((float)n);
+
+
+			originalMove = (F + R*2 + P*(n-3))/((float)n);
+		}
+		oldP[vi.handle()] = originalMove;
 	}
 	// Now move old points
 	 cout << "Moving old points\n";
@@ -237,35 +241,24 @@ void SubdivisionViewer::Perform_Loop()
 	**********************************************/
 	//1. Find New Edge midpoints, and enter them in enewpoint_
 	for(Mesh::EdgeIter eiter = mesh_.edges_begin(); eiter != mesh_.edges_end(); ++eiter) {
-		Mesh::HalfedgeHandle heh0 = mesh_.halfedge_handle(eiter, 0);
-		Mesh::HalfedgeHandle heh1 = mesh_.halfedge_handle(eiter, 1);
-
-		Mesh::Point p0 = mesh_.point(mesh_.from_vertex_handle(heh0));
-		Mesh::Point p1 = mesh_.point(mesh_.to_vertex_handle(heh0));
-
-		Mesh::HalfedgeHandle topHeh = mesh_.next_halfedge_handle(heh1);
-		Mesh::HalfedgeHandle bottomHeh = mesh_.next_halfedge_handle(heh0);
-
-		// TODO: This might not be an optimal method
-		float factor = 1;
-
-		Mesh::Point top(0,0,0);
-		if(!mesh_.is_boundary(topHeh)) {
-			top = mesh_.point(mesh_.to_vertex_handle(topHeh));
-		} else {
-			++factor; // TODO: check factor 0
-		}
-
-		Mesh::Point bottom(0,0,0); 
-		if(!mesh_.is_boundary(topHeh)) {
-			bottom = mesh_.point(mesh_.to_vertex_handle(bottomHeh));
-		} else {
-			++factor; // TODO: check factor 0
-		}
-
 		Mesh::Point edgePoint(0,0,0);
 
-		edgePoint = (p0 + p1)*0.375 + (top + bottom)*0.125*factor;
+		if(!Chaikin(eiter, edgePoint)) {
+			Mesh::HalfedgeHandle heh0 = mesh_.halfedge_handle(eiter, 0);
+			Mesh::HalfedgeHandle heh1 = mesh_.halfedge_handle(eiter, 1);
+
+			Mesh::Point p0 = mesh_.point(mesh_.from_vertex_handle(heh0));
+			Mesh::Point p1 = mesh_.point(mesh_.to_vertex_handle(heh0));
+
+			Mesh::HalfedgeHandle topHeh = mesh_.next_halfedge_handle(heh1);
+			Mesh::HalfedgeHandle bottomHeh = mesh_.next_halfedge_handle(heh0);
+
+			Mesh::Point top = mesh_.point(mesh_.to_vertex_handle(topHeh));
+			Mesh::Point bottom = mesh_.point(mesh_.to_vertex_handle(bottomHeh));
+
+			edgePoint = (p0 + p1)*0.375 + (top + bottom)*0.125;
+		}
+
 		mesh_.property(enewpoint_, eiter) = edgePoint;
 	}
 	//2. Allocate new edge vertices in enewvertex_
@@ -273,18 +266,21 @@ void SubdivisionViewer::Perform_Loop()
 	//3. Delete the old faces, and enter the new faces
 	std::map<Mesh::VertexHandle, Mesh::Point> originals;
 	for(Mesh::VertexIter vh = mesh_.vertices_begin(); vh != mesh_.vertices_end(); ++vh) {
-		Mesh::Point P = mesh_.point(vh);
-		int valence = 0;
-		Mesh::Point neighbors(0,0,0);
-		for(Mesh::VVIter vvit = mesh_.vv_iter(vh); vvit ; ++vvit) {
-			++valence;
-			neighbors += mesh_.point(vvit);
-		}
-		// Build Beta
-		float square = ((3.0/8.0)+0.25*cos(2.8*M_PI/(float)valence));
-		float beta = (1.0/(float)valence)*((5.0/8.0)-(square*square));
+		Mesh::Point newPos(0,0,0);
+		if(!Chaikin(vh, newPos)) {
+			Mesh::Point P = mesh_.point(vh);
+			int valence = 0;
+			Mesh::Point neighbors(0,0,0);
+			for(Mesh::VVIter vvit = mesh_.vv_iter(vh); vvit ; ++vvit) {
+				++valence;
+				neighbors += mesh_.point(vvit);
+			}
+			// Build Beta
+			float square = ((3.0/8.0)+0.25*cos(2.0*M_PI/(float)valence));
+			float beta = (1.0/(float)valence)*((5.0/8.0)-(square*square));
 
-		Mesh::Point newPos = P*(1-((float)valence)*beta) + neighbors*beta;
+			newPos = P*(1-((float)valence)*beta) + neighbors*beta;
+		}
 		originals[vh.handle()]  = newPos;
 	}
 
@@ -374,10 +370,45 @@ void SubdivisionViewer::Perform_Loop()
 }
 
 //-----------------------------------------------------------------------------
+bool SubdivisionViewer::Chaikin(Mesh::EdgeIter& eh,Mesh::Point& edgePoint) {
+	return Chaikin(eh.handle(), edgePoint);
+}
+bool SubdivisionViewer::Chaikin(Mesh::VertexIter& vh, Mesh::Point& newPos) {
+	return Chaikin(vh.handle(), newPos);
+}
+
+bool SubdivisionViewer::Chaikin(Mesh::EdgeHandle& eh, Mesh::Point& edgePoint) {
+	if(!mesh_.is_boundary(eh))
+		return false;
+
+	Mesh::HalfedgeHandle heh = mesh_.halfedge_handle(eh, 0);
+	Mesh::Point p0 = mesh_.point(mesh_.from_vertex_handle(heh));
+	Mesh::Point p1 = mesh_.point(mesh_.to_vertex_handle(heh));
+
+	edgePoint = (p0 + p1)*0.5;
+	return true;
+}
+
+bool SubdivisionViewer::Chaikin(Mesh::VertexHandle& vh, Mesh::Point& newPos) {
+	if(!mesh_.is_boundary(vh))
+		return false;
+	std::vector<Mesh::Point> pts;
+	for(Mesh::VVIter vohit = mesh_.vv_iter(vh); vohit; ++vohit) {
+		if(mesh_.is_boundary(vohit)) {
+			pts.push_back(mesh_.point(vohit));
+		}
+	}
+
+	if(pts.size()!=2)
+		std::cerr << "Fishy mesh\n";
+
+	newPos = (pts[0] + pts[1])*0.125 + mesh_.point(vh)*0.75;
+
+	return true;
+}
 
 
-
-
+// ------------------------------
 
 bool
 	SubdivisionViewer::
