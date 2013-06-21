@@ -393,7 +393,9 @@ bool SubdivisionViewer::Chaikin(Mesh::VertexHandle& vh, Mesh::Point& newPos) {
 	if(!mesh_.is_boundary(vh))
 		return false;
 	std::vector<Mesh::Point> pts;
+	int valence = 0;
 	for(Mesh::VVIter vohit = mesh_.vv_iter(vh); vohit; ++vohit) {
+		++valence;
 		if(mesh_.is_boundary(vohit)) {
 			pts.push_back(mesh_.point(vohit));
 		}
@@ -402,7 +404,11 @@ bool SubdivisionViewer::Chaikin(Mesh::VertexHandle& vh, Mesh::Point& newPos) {
 	if(pts.size()!=2)
 		std::cerr << "Fishy mesh\n";
 
-	newPos = (pts[0] + pts[1])*0.125 + mesh_.point(vh)*0.75;
+	if(valence>2) {
+		newPos = (pts[0] + pts[1])*0.125 + mesh_.point(vh)*0.75;
+	} else {
+		newPos = mesh_.point(vh);
+	}
 
 	return true;
 }
